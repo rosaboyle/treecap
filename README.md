@@ -8,6 +8,77 @@ Unlike `tree -L` (which limits depth) or `tree --filelimit` (which hides big
 directories entirely), `treecap` always recurses but caps the *display* width
 per directory.
 
+## Why? A real example: feeding `node_modules` to an AI
+
+You want an AI to help you bump a transitive dependency to patch a CVE, or just
+understand how a giant `node_modules` is laid out. So you try `tree`:
+
+```console
+$ tree node_modules | tail -1
+5602 directories, 29866 files
+```
+
+29,866 files. That's hundreds of thousands of tokens — it blows past any model's
+context window and buries the *shape* of the tree in noise. `tree -L 2` helps,
+but then you lose all the deep paths that actually matter.
+
+`treecap` keeps the full depth but caps the **width** of every folder, so the
+whole structure stays legible and small enough to paste into a prompt:
+
+```console
+$ treecap node_modules
+node_modules/
+├── @babel/
+│   ├── code-frame/
+│   │   ├── lib/
+│   │   │   ├── index.js
+│   │   │   └── index.js.map
+│   │   ├── LICENSE
+│   │   ├── package.json
+│   │   └── README.md
+│   ├── compat-data/
+│   │   ├── data/
+│   │   │   ├── corejs2-built-ins.json
+│   │   │   ├── corejs3-shipped-proposals.json
+│   │   │   ├── native-modules.json
+│   │   │   ├── overlapping-plugins.json
+│   │   │   ├── plugin-bugfixes.json
+│   │   │   └── ... (1 more)
+│   │   ├── corejs2-built-ins.js
+│   │   ├── corejs3-shipped-proposals.js
+│   │   ├── LICENSE
+│   │   ├── native-modules.js
+│   │   └── ... (5 more)
+│   ├── core/
+│   │   ├── lib/
+│   │   │   ├── config/
+│   │   │   │   ├── files/
+│   │   │   │   │   ├── configuration.js
+│   │   │   │   │   ├── configuration.js.map
+│   │   │   │   │   ├── import.cjs
+│   │   │   │   │   ├── import.cjs.map
+│   │   │   │   │   ├── index-browser.js
+│   │   │   │   │   └── ... (13 more)
+│   │   │   │   └── ... (5 more)
+│   │   │   └── ... (4 more)
+│   │   └── ... (2 more)
+│   └── ... (15 more)
+└── ... (229 more)
+```
+
+Same `node_modules` — but now every directory shows at most a handful of
+entries and the rest collapse into `... (N more)`. You still see that `@babel`
+exists, that there are 230 top-level packages, and how deep `@babel/core/lib`
+goes — all in a few hundred lines instead of 30,000.
+
+> **Tip:** `node_modules` is auto-skipped during recursion, so point `treecap`
+> *at* it as the root (`treecap node_modules`) to inspect it. Widen busy levels
+> with `-W` when you need more detail: `treecap -W 8 node_modules`.
+
+Great for: dependency audits, "where does this package live?", onboarding to an
+unfamiliar repo, and handing an LLM a map of a codebase without flooding its
+context window.
+
 ## Install
 
 ```bash
