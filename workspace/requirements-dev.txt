@@ -1,0 +1,8 @@
+# Dev-only deps for token benchmarking in workspace/.
+# NOT part of the published treecap package — keep these out of pyproject.toml.
+#
+# Install into a throwaway/dev venv:
+#   pip install -r workspace/requirements-dev.txt
+
+tiktoken>=0.7.0          # OpenAI tokenizers (cl100k_base, o200k_base)
+transformers>=4.40.0     # Hugging Face tokenizers (Llama/Qwen/etc.)
