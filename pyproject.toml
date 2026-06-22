@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "treecap"
+version = "0.1.0"
+description = "A directory tree that caps how many entries are shown per folder."
+readme = "README.md"
+requires-python = ">=3.8"
+license = { text = "MIT" }
+authors = [{ name = "Dheeraj Pai" }]
+keywords = ["tree", "cli", "filesystem", "directory"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Environment :: Console",
+]
+
+[project.scripts]
+treecap = "treecap.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/dheerajpai/treecap"
+
+[tool.setuptools.packages.find]
+where = ["src"]

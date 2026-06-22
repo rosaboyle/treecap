@@ -1,0 +1,2 @@
+[console_scripts]
+treecap = treecap.cli:main
