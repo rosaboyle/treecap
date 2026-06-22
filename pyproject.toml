@@ -22,7 +22,7 @@ classifiers = [
 treecap = "treecap.cli:main"
 
 [project.urls]
-Homepage = "https://github.com/dheerajpai/treecap"
+Homepage = "https://github.com/rosaboyle/treecap"
 
 [tool.setuptools.packages.find]
 where = ["src"]
