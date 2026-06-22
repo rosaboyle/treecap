@@ -1,6 +1,6 @@
 Metadata-Version: 2.4
 Name: treecap
-Version: 0.1.0
+Version: 0.1.1
 Summary: A directory tree that caps how many entries are shown per folder.
 Author: Dheeraj Pai
 License: MIT
