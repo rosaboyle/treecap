@@ -3,15 +3,84 @@
 Unlike `tree --filelimit`, which hides a directory entirely once it has too
 many entries, treecap always recurses but caps the *display* per directory,
 collapsing the overflow into a "... (N more)" line.
+
+The first layer (the root's direct children) is never capped tightly: it uses
+a separate, generous `--top-width` so you always see the whole top level.
+
+Three compression levels control how loose files are rendered:
+
+  0  every entry on its own line (the classic tree)
+  1  loose files in a folder collapse onto one comma-separated line
+  2  like 1, plus a folder that contains *only* files is written inline
+     in brackets:  name/ [a.py, b.py, c.py]
+
+Defaults are read from ~/.treecap/settings.json (CLI flags override them);
+`--save-config` writes the current options back to that file.
 """
 import argparse
+import json
 import os
 import sys
 
 from . import __version__
 
 # Directories we never descend into by default.
-DEFAULT_SKIP = {".git", "node_modules", "__pycache__", ".venv", "venv"}
+DEFAULT_SKIP = [".git", "node_modules", "__pycache__", ".venv", "venv"]
+
+# Built-in defaults, lowest priority. Overridden by the settings file, which is
+# in turn overridden by explicit command-line flags.
+BUILTIN_DEFAULTS = {
+    "width": 5,
+    "top_width": 50,
+    "level": None,
+    "compress": 0,
+    "all": False,
+    "no_skip": False,
+    "skip": list(DEFAULT_SKIP),
+}
+
+# Options that live in ~/.treecap/settings.json (everything but root/save flags).
+CONFIG_KEYS = tuple(BUILTIN_DEFAULTS)
+
+
+def settings_path():
+    return os.path.join(os.path.expanduser("~"), ".treecap", "settings.json")
+
+
+def load_settings():
+    """Return the user's settings dict, or {} if there isn't a valid one."""
+    try:
+        with open(settings_path()) as f:
+            data = json.load(f)
+    except (FileNotFoundError, OSError, ValueError):
+        return {}
+    if not isinstance(data, dict):
+        return {}
+    return {k: v for k, v in data.items() if k in CONFIG_KEYS}
+
+
+def save_settings(config):
+    path = settings_path()
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w") as f:
+        json.dump(config, f, indent=2, sort_keys=True)
+        f.write("\n")
+    return path
+
+
+class Options:
+    """Resolved, ready-to-render settings passed down the walk."""
+
+    def __init__(self, cfg):
+        self.width = None if cfg["width"] == 0 else cfg["width"]
+        self.top_width = None if cfg["top_width"] == 0 else cfg["top_width"]
+        self.level = cfg["level"]
+        self.compress = cfg["compress"]
+        self.all = cfg["all"]
+        self.skip = set() if cfg["no_skip"] else set(cfg["skip"])
+
+    def cap_for(self, depth):
+        return self.top_width if depth == 0 else self.width
 
 
 def list_entries(path, show_all, skip):
@@ -31,56 +100,130 @@ def list_entries(path, show_all, skip):
     return out
 
 
-def walk(path, prefix, width, max_depth, depth, show_all, skip):
-    if max_depth is not None and depth >= max_depth:
+def join_names(names, cap):
+    """Comma-join names, capping to `cap` with a trailing '... (N more)'."""
+    if cap is not None and len(names) > cap:
+        kept = names[:cap]
+        return ", ".join(kept) + f", ... ({len(names) - cap} more)"
+    return ", ".join(names)
+
+
+def inline_dir(entry, opts):
+    """Render a files-only directory inline:  name/ [a, b, c]  (compress 2)."""
+    children = list_entries(entry.path, opts.all, opts.skip)
+    names = [c.name for c in children]
+    return f"{entry.name}/ [{join_names(names, opts.width)}]"
+
+
+def only_files(entry, opts):
+    """True if `entry` is a directory whose visible children are all files."""
+    children = list_entries(entry.path, opts.all, opts.skip)
+    return bool(children) and all(not c.is_dir() for c in children)
+
+
+def walk(path, prefix, depth, opts):
+    if opts.level is not None and depth >= opts.level:
         return
-    entries = list_entries(path, show_all, skip)
-    shown = entries if width is None else entries[:width]
+    entries = list_entries(path, opts.all, opts.skip)
+    cap = opts.cap_for(depth)
+    shown = entries if cap is None else entries[:cap]
     hidden = len(entries) - len(shown)
 
-    for i, e in enumerate(shown):
-        last = (i == len(shown) - 1) and hidden == 0
-        connector = "└── " if last else "├── "
-        print(prefix + connector + e.name + ("/" if e.is_dir() else ""))
-        if e.is_dir():
-            extension = "    " if last else "│   "
-            walk(e.path, prefix + extension, width, max_depth,
-                 depth + 1, show_all, skip)
-
+    # Build the list of rows for this directory. Each row is a (kind, payload)
+    # tuple; kind is "dir", "inline", "files" or "more".
+    rows = []
+    if opts.compress == 0:
+        rows.extend(("dir" if e.is_dir() else "file", e) for e in shown)
+    else:
+        dirs = [e for e in shown if e.is_dir()]
+        files = [e for e in shown if not e.is_dir()]
+        deeper_ok = opts.level is None or depth + 1 < opts.level
+        for d in dirs:
+            if opts.compress >= 2 and deeper_ok and only_files(d, opts):
+                rows.append(("inline", d))
+            else:
+                rows.append(("dir", d))
+        if files:
+            rows.append(("files", files))
     if hidden > 0:
-        print(prefix + f"└── ... ({hidden} more)")
+        rows.append(("more", hidden))
+
+    for i, (kind, payload) in enumerate(rows):
+        last = i == len(rows) - 1
+        connector = "└── " if last else "├── "
+        extension = "    " if last else "│   "
+        if kind == "more":
+            print(f"{prefix}{connector}... ({payload} more)")
+        elif kind == "files":
+            print(prefix + connector + join_names([f.name for f in payload], None))
+        elif kind == "inline":
+            print(prefix + connector + inline_dir(payload, opts))
+        elif kind == "dir":
+            print(prefix + connector + payload.name + "/")
+            walk(payload.path, prefix + extension, depth + 1, opts)
+        else:  # file
+            print(prefix + connector + payload.name)
 
 
 def build_parser():
     p = argparse.ArgumentParser(
         prog="treecap",
         description="A directory tree that caps how many entries are shown "
-                    "per folder (the rest collapse into '... (N more)').",
+                    "per folder (the rest collapse into '... (N more)'). "
+                    "Defaults come from ~/.treecap/settings.json.",
+        argument_default=argparse.SUPPRESS,
     )
     p.add_argument("root", nargs="?", default=".",
                    help="directory to walk (default: current dir)")
-    p.add_argument("-W", "--width", type=int, default=5, metavar="N",
-                   help="max entries shown per directory (default: 5; "
-                        "use 0 for unlimited)")
-    p.add_argument("-L", "--level", type=int, default=None, metavar="DEPTH",
+    p.add_argument("-W", "--width", type=int, metavar="N",
+                   help="max entries shown per directory below the top level "
+                        "(default: 5; use 0 for unlimited)")
+    p.add_argument("-T", "--top-width", type=int, metavar="N", dest="top_width",
+                   help="max entries shown at the first/top level "
+                        "(default: 50; use 0 for unlimited)")
+    p.add_argument("-L", "--level", type=int, metavar="DEPTH",
                    help="max display depth (default: unlimited)")
+    p.add_argument("-c", "--compress", type=int, metavar="LEVEL",
+                   choices=(0, 1, 2),
+                   help="compression: 0 = one entry per line (default); "
+                        "1 = collapse loose files onto a comma line; "
+                        "2 = also inline files-only folders as name/ [a, b]")
     p.add_argument("-a", "--all", action="store_true",
                    help="include hidden files/dirs (dotfiles)")
-    p.add_argument("--no-skip", action="store_true",
+    p.add_argument("--no-skip", action="store_true", dest="no_skip",
                    help="don't skip .git/node_modules/__pycache__/.venv")
+    p.add_argument("--save-config", action="store_true", dest="save_config",
+                   help="write the current options to ~/.treecap/settings.json "
+                        "and exit")
     p.add_argument("--version", action="version",
                    version=f"%(prog)s {__version__}")
     return p
 
 
+def resolve_config(args):
+    """Layer built-in defaults < settings file < explicit CLI flags."""
+    cfg = dict(BUILTIN_DEFAULTS)
+    cfg.update(load_settings())
+    for key in CONFIG_KEYS:
+        if hasattr(args, key):
+            cfg[key] = getattr(args, key)
+    return cfg
+
+
 def main(argv=None):
     args = build_parser().parse_args(argv)
-    width = None if args.width == 0 else args.width
-    skip = set() if args.no_skip else DEFAULT_SKIP
+    cfg = resolve_config(args)
 
-    print(args.root.rstrip("/") + "/")
+    if getattr(args, "save_config", False):
+        path = save_settings(cfg)
+        print(f"wrote {path}")
+        return 0
+
+    opts = Options(cfg)
+    root = getattr(args, "root", ".")
+    print(root.rstrip("/") + "/")
     try:
-        walk(args.root, "", width, args.level, 0, args.all, skip)
+        walk(root, "", 0, opts)
     except BrokenPipeError:  # e.g. piped into `head`
         try:
             sys.stdout.close()

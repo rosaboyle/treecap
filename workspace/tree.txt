@@ -1,0 +1,25 @@
+.
+├── publish.sh
+├── pyproject.toml
+├── README.md
+├── src
+│   ├── treecap
+│   │   ├── __init__.py
+│   │   ├── __pycache__
+│   │   │   ├── __init__.cpython-312.pyc
+│   │   │   └── cli.cpython-312.pyc
+│   │   └── cli.py
+│   └── treecap.egg-info
+│       ├── dependency_links.txt
+│       ├── entry_points.txt
+│       ├── PKG-INFO
+│       ├── SOURCES.txt
+│       └── top_level.txt
+├── TODO.md
+└── workspace
+    ├── bump_version.sh
+    ├── count_tokens.py
+    ├── requirements-dev.txt
+    └── tree.txt
+
+6 directories, 17 files

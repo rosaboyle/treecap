@@ -1,0 +1,21 @@
+./
+├── src/
+│   ├── treecap/
+│   │   ├── __init__.py
+│   │   └── cli.py
+│   └── treecap.egg-info/
+│       ├── dependency_links.txt
+│       ├── entry_points.txt
+│       ├── PKG-INFO
+│       ├── SOURCES.txt
+│       └── top_level.txt
+├── workspace/
+│   ├── bump_version.sh
+│   ├── count_tokens.py
+│   ├── requirements-dev.txt
+│   ├── tree.txt
+│   └── treecap.txt
+├── publish.sh
+├── pyproject.toml
+├── README.md
+└── ... (1 more)
