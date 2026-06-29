@@ -1,6 +1,6 @@
 Metadata-Version: 2.4
 Name: treecap
-Version: 0.1.1
+Version: 0.2.1
 Summary: A directory tree that caps how many entries are shown per folder.
 Author: Dheeraj Pai
 License: MIT
@@ -180,23 +180,71 @@ pip install -e .      # editable install into the current environment
 ## Usage
 
 ```bash
-treecap                 # current dir, 5 entries per folder
-treecap -W 10           # show 10 entries per folder
+treecap                 # current dir; whole top level, 5 entries per deeper folder
+treecap -W 10           # show 10 entries per folder below the top level
+treecap -T 20           # cap the top level at 20 entries too
 treecap -L 3            # limit display depth to 3 levels
 treecap -W 5 -L 4 data  # 5 per folder, 4 deep, starting at ./data
+treecap -c 1            # collapse loose files onto one comma line
+treecap -c 2            # also inline files-only folders as  name/ [a, b]
 treecap -a              # include hidden dotfiles
 treecap --no-skip       # do not auto-skip .git/node_modules/etc.
 treecap > dir.tree      # save to a file
+```
+
+### The top level is never squeezed
+
+The first layer (the root's direct children) uses a separate, generous
+`--top-width` (default 50) instead of `--width`, so you always see the whole
+top level of a repo even though deeper, noisier folders stay capped at 5. Set
+`-T 0` for a truly unlimited top level, or `-T N` to cap it.
+
+### Compression levels
+
+`-c/--compress` controls how *loose files* are rendered (directories still
+recurse so you keep the shape):
+
+| Level | Effect |
+|-------|--------|
+| `0` | Classic tree — every entry on its own line (default) |
+| `1` | Loose files in a folder collapse onto one comma-separated line |
+| `2` | Like 1, **and** a folder that contains only files is written inline: `name/ [a.py, b.py]` |
+
+```console
+$ treecap -c 2
+./
+├── src/
+│   ├── treecap/ [__init__.py, cli.py]
+│   └── treecap.egg-info/ [dependency_links.txt, entry_points.txt, PKG-INFO, SOURCES.txt, top_level.txt]
+├── workspace/ [bump_version.sh, count_tokens.py, requirements-dev.txt, tree.txt, treecap.txt]
+└── publish.sh, pyproject.toml, README.md, ...
+```
+
+`-W` still caps how many names appear before a `... (N more)`, so raise it
+(`treecap -c 1 -W 20`) when you want denser comma lines to show more.
+
+### Settings file
+
+Defaults are read from `~/.treecap/settings.json` (JSON object with any of the
+keys `width`, `top_width`, `level`, `compress`, `all`, `no_skip`, `skip`).
+Explicit command-line flags always override the file. Save your current options
+as the new defaults with:
+
+```bash
+treecap -c 2 -W 8 --save-config   # writes ~/.treecap/settings.json and exits
 ```
 
 ### Options
 
 | Flag | Meaning |
 |------|---------|
-| `-W, --width N` | Max entries shown per directory (default 5; `0` = unlimited) |
+| `-W, --width N` | Max entries shown per directory below the top level (default 5; `0` = unlimited) |
+| `-T, --top-width N` | Max entries shown at the top level (default 50; `0` = unlimited) |
 | `-L, --level DEPTH` | Max display depth (default: unlimited) |
+| `-c, --compress LEVEL` | Compression `0`/`1`/`2` (default 0) — see above |
 | `-a, --all` | Include hidden files/dirs |
 | `--no-skip` | Do not skip `.git`, `node_modules`, `__pycache__`, `.venv`, `venv` |
+| `--save-config` | Write current options to `~/.treecap/settings.json` and exit |
 | `--version` | Print version |
 
 ## Links

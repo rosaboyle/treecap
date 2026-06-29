@@ -121,9 +121,16 @@ def only_files(entry, opts):
     return bool(children) and all(not c.is_dir() for c in children)
 
 
+def inline_shown_files(entry, opts):
+    """How many bracketed file names are actually visible for an inline dir."""
+    n = len(list_entries(entry.path, opts.all, opts.skip))
+    return n if opts.width is None else min(n, opts.width)
+
+
 def walk(path, prefix, depth, opts):
+    """Print the tree for `path`; return (dirs_shown, files_shown)."""
     if opts.level is not None and depth >= opts.level:
-        return
+        return 0, 0
     entries = list_entries(path, opts.all, opts.skip)
     cap = opts.cap_for(depth)
     shown = entries if cap is None else entries[:cap]
@@ -148,6 +155,7 @@ def walk(path, prefix, depth, opts):
     if hidden > 0:
         rows.append(("more", hidden))
 
+    sdirs = sfiles = 0
     for i, (kind, payload) in enumerate(rows):
         last = i == len(rows) - 1
         connector = "└── " if last else "├── "
@@ -156,13 +164,48 @@ def walk(path, prefix, depth, opts):
             print(f"{prefix}{connector}... ({payload} more)")
         elif kind == "files":
             print(prefix + connector + join_names([f.name for f in payload], None))
+            sfiles += len(payload)
         elif kind == "inline":
             print(prefix + connector + inline_dir(payload, opts))
+            sdirs += 1
+            sfiles += inline_shown_files(payload, opts)
         elif kind == "dir":
             print(prefix + connector + payload.name + "/")
-            walk(payload.path, prefix + extension, depth + 1, opts)
+            sdirs += 1
+            d, f = walk(payload.path, prefix + extension, depth + 1, opts)
+            sdirs += d
+            sfiles += f
         else:  # file
             print(prefix + connector + payload.name)
+            sfiles += 1
+    return sdirs, sfiles
+
+
+def count_tree(path, depth, opts):
+    """Count (directories, files) in the tree, mirroring `walk`'s filters.
+
+    Respects the same hidden/skip/level rules as the display walk, but ignores
+    the per-directory display caps: it reports the true totals of the tree,
+    not just the entries that fit on screen.
+    """
+    if opts.level is not None and depth >= opts.level:
+        return 0, 0
+    ndirs = nfiles = 0
+    for e in list_entries(path, opts.all, opts.skip):
+        if e.is_dir():
+            ndirs += 1
+            sub_dirs, sub_files = count_tree(e.path, depth + 1, opts)
+            ndirs += sub_dirs
+            nfiles += sub_files
+        else:
+            nfiles += 1
+    return ndirs, nfiles
+
+
+def summary_line(ndirs, nfiles):
+    dir_word = "directory" if ndirs == 1 else "directories"
+    file_word = "file" if nfiles == 1 else "files"
+    return f"{ndirs} {dir_word}, {nfiles} {file_word}"
 
 
 def build_parser():
@@ -223,7 +266,15 @@ def main(argv=None):
     root = getattr(args, "root", ".")
     print(root.rstrip("/") + "/")
     try:
-        walk(root, "", 0, opts)
+        shown_dirs, shown_files = walk(root, "", 0, opts)
+        # Count the root itself, like `tree`, then everything beneath it.
+        total_dirs, total_files = count_tree(root, 0, opts)
+        total = summary_line(total_dirs + 1, total_files)
+        shown = summary_line(shown_dirs + 1, shown_files)
+        if (shown_dirs, shown_files) == (total_dirs, total_files):
+            print("\n" + total)
+        else:
+            print("\n" + total + f" ({shown} shown)")
     except BrokenPipeError:  # e.g. piped into `head`
         try:
             sys.stdout.close()

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "treecap"
-version = "0.2.0"
+version = "0.2.1"
 description = "A directory tree that caps how many entries are shown per folder."
 readme = "README.md"
 requires-python = ">=3.8"
